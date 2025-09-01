@@ -1,0 +1,329 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<title>Simulador de Polarizado PROAUTO</title>
+<script src="https://unpkg.com/konva@9/konva.min.js"></script>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@500;700&display=swap');
+
+  body {
+    background: radial-gradient(circle at top, #0d0d0d, #000);
+    color: #0ff;
+    font-family: 'Orbitron', sans-serif;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    height: 100vh;
+  }
+
+  /* Panel lateral futurista */
+  #panel {
+    width: 280px;
+    background: rgba(20, 20, 20, 0.7);
+    backdrop-filter: blur(8px);
+    border-right: 2px solid #0ff;
+    box-shadow: 0 0 25px #0ff;
+    padding: 20px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+  }
+
+  #panel h1 {
+    color: #0ff;
+    text-shadow: 0 0 15px #0ff, 0 0 30px #09f;
+    font-size: 22px;
+    margin-bottom: 20px;
+    text-align: center;
+  }
+
+  #workspace {
+    flex: 1;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+  }
+
+  #container {
+    border: 2px solid #0ff;
+    background: #111;
+    width: 900px;
+    height: 600px;
+    box-shadow: 0 0 25px #0ff, inset 0 0 15px #00f;
+    border-radius: 10px;
+  }
+
+  input, button, label {
+    margin: 8px 0;
+    padding: 8px 12px;
+    border-radius: 8px;
+    border: none;
+    font-size: 14px;
+    font-family: 'Orbitron', sans-serif;
+  }
+
+  button {
+    background: #111;
+    color: #0ff;
+    border: 1px solid #0ff;
+    cursor: pointer;
+    transition: all 0.3s;
+    box-shadow: 0 0 8px #0ff;
+    width: 100%;
+  }
+
+  button:hover {
+    background: #0ff;
+    color: #000;
+    box-shadow: 0 0 20px #0ff, 0 0 40px #0ff;
+  }
+
+  input[type="file"] {
+    color: #0ff;
+    background: #111;
+    border: 1px solid #0ff;
+    box-shadow: 0 0 8px #0ff;
+    width: 100%;
+  }
+
+  input[type=range] {
+    width: 100%;
+    accent-color: #0ff;
+  }
+
+  input[type=color] {
+    border: none;
+    width: 60px;
+    height: 35px;
+    cursor: pointer;
+    background: none;
+    box-shadow: 0 0 10px #0ff;
+  }
+
+  label {
+    color: #0ff;
+    text-shadow: 0 0 5px #0ff;
+    display: block;
+    margin-top: 10px;
+  }
+</style>
+</head>
+<body>
+
+<!-- Panel lateral -->
+<div id="panel">
+  <h1>Simulador<br>Polarizado PROAUTO</h1>
+
+  <input type="file" id="fileInput" accept="image/*"><br>
+
+  <button id="drawPoly" disabled>Dibujar ventana</button>
+  <button id="finishPoly" disabled>Cerrar ventana</button>
+  <button id="exportBtn" disabled>Descargar imagen</button>
+
+  <label>VLT (%)</label>
+  <input type="range" id="vlt" min="5" max="90" value="35">
+  <span id="vltLabel">35%</span>
+
+  <label>Color del tinte</label>
+  <input type="color" id="color" value="#000000">
+
+  <label>Reflexión (%)</label>
+  <input type="range" id="refl" min="0" max="60" value="10">
+  <span id="reflLabel">10%</span>
+</div>
+
+<!-- Área de trabajo -->
+<div id="workspace">
+  <div id="container"></div>
+</div>
+
+<script>
+/* === Script original con pequeños ajustes === */
+const stage = new Konva.Stage({container:'container', width:900, height:600});
+const layer = new Konva.Layer();
+stage.add(layer);
+
+let backgroundImg;
+let drawing=false;
+let currentLine;
+let points=[];
+let polygons=[];
+let selectedPolygon=null;
+
+// Logo PROAUTO futurista dentro del canvas
+const logo = new Konva.Text({
+  x: 20,
+  y: 15,
+  text: 'PROAUTO',
+  fontSize: 28,
+  fontFamily: 'Orbitron',
+  fill: '#0ff',
+  shadowColor: '#0ff',
+  shadowBlur: 20,
+  fontStyle: 'bold'
+});
+layer.add(logo);
+
+const transformer = new Konva.Transformer({
+  rotateEnabled: false,
+  enabledAnchors: ['top-left','top-right','bottom-left','bottom-right','middle-left','middle-right','middle-top','middle-bottom'],
+});
+layer.add(transformer);
+
+function loadImage(file) {
+  const reader = new FileReader();
+  reader.onload = evt => {
+    const img = new Image();
+    img.onload = function() {
+      if(backgroundImg) backgroundImg.destroy();
+      const scale = Math.min(stage.width()/img.width, stage.height()/img.height);
+      backgroundImg = new Konva.Image({
+        image: img,
+        x: stage.width()/2 - (img.width*scale)/2,
+        y: stage.height()/2 - (img.height*scale)/2,
+        scaleX: scale,
+        scaleY: scale
+      });
+      layer.add(backgroundImg);
+      backgroundImg.moveToBottom();
+      layer.draw();
+      document.getElementById('drawPoly').disabled=false;
+      document.getElementById('finishPoly').disabled=false;
+      document.getElementById('exportBtn').disabled=false;
+    };
+    img.src = evt.target.result;
+  };
+  reader.readAsDataURL(file);
+}
+document.getElementById('fileInput').addEventListener('change', e=>{
+  const file=e.target.files[0];
+  if(file) loadImage(file);
+});
+
+document.getElementById('drawPoly').addEventListener('click', ()=>{
+  drawing=true;
+  points=[];
+  currentLine=null;
+  transformer.nodes([]);
+  selectedPolygon=null;
+});
+
+stage.on('mousedown', e=>{
+  if(!drawing) return;
+  const pos=stage.getPointerPosition();
+  points.push(pos.x,pos.y);
+  if(!currentLine){
+    currentLine=new Konva.Line({points, stroke:'cyan', strokeWidth:2, closed:false, lineJoin:'round'});
+    layer.add(currentLine);
+  } else currentLine.points(points);
+  layer.draw();
+});
+
+document.getElementById('finishPoly').addEventListener('click', ()=>{
+  if(!currentLine) return;
+  currentLine.destroy();
+
+  const polygon=new Konva.Line({
+    points: points,
+    closed:true,
+    fill:document.getElementById('color').value,
+    opacity:(100-document.getElementById('vlt').value)/100,
+    strokeWidth:0,
+    draggable:false,
+    tension:0,
+    listening:true
+  });
+
+  const reflRect=new Konva.Rect({
+    x:0,y:0,width:stage.width(),height:stage.height(),
+    fillLinearGradientStartPoint:{x:0,y:0},
+    fillLinearGradientEndPoint:{x:stage.width(),y:stage.height()},
+    fillLinearGradientColorStops:[
+      0,'rgba(255,255,255,'+(0.18*document.getElementById('refl').value/60)+')',
+      0.5,'rgba(255,255,255,0)',
+      1,'rgba(255,255,255,'+(0.06*document.getElementById('refl').value/60)+')'
+    ],
+    clipFunc:function(ctx){ctx.beginPath();ctx.moveTo(points[0],points[1]); for(let i=2;i<points.length;i+=2) ctx.lineTo(points[i],points[i+1]); ctx.closePath();}
+  });
+
+  layer.add(polygon);
+  layer.add(reflRect);
+  polygons.push({polygon,points,reflRect});
+  selectPolygon(polygons.length-1);
+
+  currentLine=null;
+  drawing=false;
+  layer.draw();
+});
+
+function selectPolygon(index){
+  selectedPolygon=null;
+  transformer.nodes([]);
+  polygons.forEach((p,i)=>{
+    if(i===index){
+      selectedPolygon=p;
+      transformer.nodes([p.polygon]);
+      p.polygon.draggable(true);
+    } else p.polygon.draggable(false);
+  });
+  layer.draw();
+}
+
+stage.on('click', e=>{
+  if(drawing) return;
+  const shape=e.target;
+  polygons.forEach((p,i)=>{
+    if(shape===p.polygon) selectPolygon(i);
+  });
+});
+
+document.getElementById('vlt').addEventListener('input', ()=>{
+  const val=document.getElementById('vlt').value;
+  document.getElementById('vltLabel').textContent=val+'%';
+  if(selectedPolygon){
+    selectedPolygon.polygon.opacity((100-val)/100);
+    layer.draw();
+  }
+});
+document.getElementById('color').addEventListener('input', ()=>{
+  if(selectedPolygon){
+    selectedPolygon.polygon.fill(document.getElementById('color').value);
+    layer.draw();
+  }
+});
+document.getElementById('refl').addEventListener('input', ()=>{
+  const val=document.getElementById('refl').value;
+  document.getElementById('reflLabel').textContent=val+'%';
+  if(selectedPolygon){
+    selectedPolygon.reflRect.destroy();
+    const points=selectedPolygon.polygon.points();
+    const reflRect=new Konva.Rect({
+      x:0,y:0,width:stage.width(),height:stage.height(),
+      fillLinearGradientStartPoint:{x:0,y:0},
+      fillLinearGradientEndPoint:{x:stage.width(),y:stage.height()},
+      fillLinearGradientColorStops:[
+        0,'rgba(255,255,255,'+(0.18*val/60)+')',
+        0.5,'rgba(255,255,255,0)',
+        1,'rgba(255,255,255,'+(0.06*val/60)+')'
+      ],
+      clipFunc:function(ctx){ctx.beginPath();ctx.moveTo(points[0],points[1]); for(let i=2;i<points.length;i+=2)ctx.lineTo(points[i],points[i+1]);ctx.closePath();}
+    });
+    layer.add(reflRect);
+    selectedPolygon.reflRect=reflRect;
+    layer.draw();
+  }
+});
+
+document.getElementById('exportBtn').addEventListener('click', ()=>{
+  transformer.nodes([]);
+  const dataURL=stage.toDataURL({pixelRatio:2});
+  const link=document.createElement('a');
+  link.download='simulador_polarizado_proauto.png';
+  link.href=dataURL;
+  link.click();
+});
+</script>
+
+</body>
+</html>
